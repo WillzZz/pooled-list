@@ -1,9 +1,9 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
 
-namespace wcorwin.ele.util.view
+namespace pooledList
 {
-    public class PooledScrollItem : MonoBehaviour, IPooledScrollItem<TestScrollData>
+    public class PooledItem : MonoBehaviour, IPooledItem<PooledData>
     {
         public Image Image;
         public Text Text;
@@ -35,7 +35,7 @@ namespace wcorwin.ele.util.view
             Image.color = toActivate ? ActiveColor : InactiveColor;
         }
 
-        public void SetData(TestScrollData data)
+        public void SetData(PooledData data)
         {
             Key = data.Key;
             Text.text = data.Key.ToString();

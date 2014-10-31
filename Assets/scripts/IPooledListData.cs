@@ -1,4 +1,4 @@
-﻿namespace wcorwin.ele.util.view.pooledList
+﻿namespace pooledList
 {
     public interface IPooledListData
     {

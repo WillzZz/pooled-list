@@ -1,9 +1,9 @@
 ﻿using System.Collections.Generic;
 
-namespace wcorwin.ele.util.view.pooledList
+namespace pooledList
 {
     public interface IPooledList<T,U> 
-        where T : IPooledScrollItem<U>
+        where T : IPooledItem<U>
         where U : IPooledListData
     {
         void AddData(IEnumerable<U> data);

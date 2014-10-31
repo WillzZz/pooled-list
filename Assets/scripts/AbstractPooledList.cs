@@ -1,12 +1,13 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace wcorwin.ele.util.view.pooledList
+namespace pooledList
 {
     public abstract class AbstractPooledList<T, U> : MonoBehaviour, IPooledList<T,U>
-        where T : Component, IPooledScrollItem<U>
+        where T : Component, IPooledItem<U>
         where U : IPooledListData 
 
     {
@@ -40,7 +41,12 @@ namespace wcorwin.ele.util.view.pooledList
         /// *MUST* have a component of type T
         /// </summary>
         public GameObject Tile;
-        
+
+        /// <summary>
+        /// Whether or not to prepopulate at awake(start?) time.
+        /// This will create an upfront perf cost instead of deferring.
+        /// </summary>
+        public bool Prepopulate; 
         
         /// <summary>
         /// This represents the number of objects that are retained and used in our pool
@@ -51,13 +57,27 @@ namespace wcorwin.ele.util.view.pooledList
         /// </summary>
         public int PoolSize;
 
-        protected List<List<T>> Items = new List<List<T>>();
+        /// <summary>
+        /// The parent of objects which are in the pool. This is inactive!
+        /// </summary>
+        public Transform PoolParent;
+
+        protected List<List<PoolEmptyObject>> Empties = new List<List<PoolEmptyObject>>(); 
+
+        protected readonly Stack<T> Pool = new Stack<T>(); 
+        protected readonly List<T> InUse = new List<T>();
+
+//        workingHere
+        /* I have the basics of the prefab stuff working, but I need to do some math to figure out how to deal with buffer areas
+         * Currently it's quite slow, because we're constantly moving around tiles
+         * also bugs! If I add an item and I'm above my pool limit it does nothing :)
+         * */
 
         //TODO: Allow for horizontal expanding lists!
         public int columns;
-        public int rows { get { return Items.Count; } }
-        private int itemCt = 0;
+        public int rows { get { return Empties.Count; } }
         public bool doNotUpdate = false;
+        private int itemCt = 0;
 
         public Vector2 CellSize;
         public Vector2 Padding;
@@ -126,36 +146,35 @@ namespace wcorwin.ele.util.view.pooledList
             //when an update happens, we need to know what should be active, and if that has changed, we should make some inactive (and return to pool)
             //      and then activate and add an item from pool to anything that is becoming active
 
+            
             //viewable rows: 
-            ActiveIndices = CalculateActiveIndices(1);
+
+            if (Prepopulate)
+            {
+                //TODO
+            }
+
+
+//            ActiveIndices = CalculateActiveIndices(1);
             Scrollbar.onValueChanged.AddListener(OnScrollbarValue);
         }
 
         protected virtual void Start()
         {
-//            Scrollbar.onValueChanged.Invoke(1);
         }
         private void RecalculateSize()
         {
             //TODO Need to adjust this for differing anchor setups
             Content.sizeDelta = new Vector2(width, height);
         }
-        private void AddItem(T item)
-        {
 
-            List<T> lastRow = GetRowForNextItem();
-            lastRow.Add(item);
-            itemCt++;
-
-            item.Activate(RowIsActive(Items.Count - 1));
-        }
-        private List<T> GetRowForNextItem()
+        private List<PoolEmptyObject> GetRowForNextEmpty()
         {
             bool createNext = itemCt % columns == 0; //mod 0 means last row is full
-            List<T> row = createNext ? new List<T>() : Items.Last();
+            List<PoolEmptyObject> row = createNext ? new List<PoolEmptyObject>() : Empties.Last();
             if (createNext)
             {
-                Items.Add(row);
+                Empties.Add(row);
                 RecalculateSize();
             }
 
@@ -171,7 +190,7 @@ namespace wcorwin.ele.util.view.pooledList
         /// Mark tiles as active or inactive
         /// </summary>
         /// <param name="px"></param>
-        private void OnScrollbarValue(float px)
+        protected void OnScrollbarValue(float px)
         {
             if (doNotUpdate ||
                 VisibleRect == null ||
@@ -227,10 +246,19 @@ namespace wcorwin.ele.util.view.pooledList
 
         private void ActivateRow(int row, bool activate)
         {
-            List<T> rowToAdjust = Items[row];
+            List<PoolEmptyObject> rowToAdjust = Empties[row];
             foreach (var item in rowToAdjust)
             {
-                item.Activate(activate);
+                if (activate)
+                {
+                    T poolItem = GetObjectFromPool(item.data);
+                    item.item = poolItem;
+                    poolItem.transform.SetParent(item.transform, false);
+                }
+                else
+                {
+                    ReturnObjectToPool((T) item.item);
+                }
             }
         }
 
@@ -269,22 +297,79 @@ namespace wcorwin.ele.util.view.pooledList
 
         public void AddData(U dataItem)
         {
+            CreateEmptyObject(dataItem);
+            itemCt++;
+        }
+
+        private T CreateT(U dataItem)
+        {
             if (Tile == null)
             {
-                Debug.LogError("No Tile set for PooledList");
-                return;
+                Debug.LogError("Tile is not set");
+                return null;
             }
             //Instantiate a T
-            GameObject go = (GameObject) Instantiate(Tile);
+            GameObject go = (GameObject)Instantiate(Tile);
             T newTile = go.GetComponent<T>();
             newTile.transform.SetParent(Grid.transform, false);
             newTile.SetData(dataItem);
-            AddItem(newTile);
+            InUse.Add(newTile);
+            return newTile;
+        }
+
+        private PoolEmptyObject CreateEmptyObject(U dataItem)
+        {
+            GameObject go = new GameObject("TileParent", typeof(RectTransform));
+            PoolEmptyObject empty = go.AddComponent<PoolEmptyObject>();
+            empty.data = dataItem;
+            empty.transform.SetParent(Grid.transform, false);
+
+            List<PoolEmptyObject> rowOfEmpties = GetRowForNextEmpty();
+            rowOfEmpties.Add(empty);
+
+            return empty;
+        }
+
+        private T GetObjectFromPool(IPooledListData dataItem)
+        {
+            T retv = null;
+            if (Pool.Count > 0)
+            {
+                //Use from the pool
+                retv = Pool.Pop();
+            }
+            else if (Pool.Count + InUse.Count < PoolSize)
+            {
+                //Create a new one
+                retv = CreateT((U) dataItem);
+            }
+            else if (PoolSize > 0)
+            {
+                Debug.LogError("Exceed Pool Limit: " + PoolSize);
+            }
+
+            return retv;
+        }
+
+        private void ReturnObjectToPool(T pooledObject, bool remove=true)
+        {
+            if (pooledObject == null) return;
+
+            pooledObject.transform.SetParent(PoolParent, false);
+            Pool.Push(pooledObject);
+            if (remove)
+                InUse.Remove(pooledObject);
+
         }
 
         public void Clear()
         {
-            
+            foreach (var item in InUse)
+            {
+                ReturnObjectToPool(item, false); //False so I can iterate the list without craziness. That might work though... test me!!!
+            }
+            InUse.Clear();
+            Empties.Clear();
         }
     }
 }

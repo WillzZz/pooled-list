@@ -1,8 +1,6 @@
-﻿using wcorwin.ele.util.view.pooledList;
-
-namespace wcorwin.ele.util.view
+﻿namespace pooledList
 {
-    public interface IPooledScrollItem<T>
+    public interface IPooledItem<T>
         where T : IPooledListData
     {
         bool visible { get; }
