@@ -9,7 +9,7 @@ namespace pooledList
         {
             base.Start();
             List<PooledData> datas = new List<PooledData>();
-            for (int i = 0; i < 60; i++)
+            for (int i = 0; i < 120; i++)
             {
                 datas.Add(new PooledData(i));
             }

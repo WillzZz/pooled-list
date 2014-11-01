@@ -415,13 +415,12 @@ MonoBehaviour:
   Content: {fileID: 518470644}
   Tile: {fileID: 100002, guid: 5504188eae96f5c43b870a7b6ae03eef, type: 2}
   Prepopulate: 1
-  PoolSize: 30
+  PoolSize: 80
   PoolParent: {fileID: 560264755}
-  columns: 4
-  doNotUpdate: 0
   CellSize: {x: 195, y: 76}
   Padding: {x: 5, y: 5}
-  ActiveIndices: {x: 0, y: 1}
+  columns: 4
+  BufferedRows: 1
 --- !u!1 &1185046024
 GameObject:
   m_ObjectHideFlags: 0

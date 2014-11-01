@@ -62,28 +62,24 @@ namespace pooledList
         /// </summary>
         public Transform PoolParent;
 
+        public Vector2 CellSize;
+        public Vector2 Padding;
+        public int columns;
+        public int BufferedRows;
+
         protected List<List<PoolEmptyObject>> Empties = new List<List<PoolEmptyObject>>(); 
 
         protected readonly Stack<T> Pool = new Stack<T>(); 
         protected readonly List<T> InUse = new List<T>();
 
-//        workingHere
-        /* I have the basics of the prefab stuff working, but I need to do some math to figure out how to deal with buffer areas
-         * Currently it's quite slow, because we're constantly moving around tiles
-         * also bugs! If I add an item and I'm above my pool limit it does nothing :)
-         * */
+        //Track the first and last index of currently active tiles
+        private Vector2 ActiveIndices = Vector2.zero;
 
         //TODO: Allow for horizontal expanding lists!
-        public int columns;
-        public int rows { get { return Empties.Count; } }
-        public bool doNotUpdate = false;
+        
+        private int rows { get { return Empties.Count; } }
+        private bool doNotUpdate = false;
         private int itemCt = 0;
-
-        public Vector2 CellSize;
-        public Vector2 Padding;
-
-        //Track the first and last index of currently active tiles
-        public Vector2 ActiveIndices = Vector2.up;
 
         private float _width = -1f;
         private float width
@@ -155,7 +151,6 @@ namespace pooledList
             }
 
 
-//            ActiveIndices = CalculateActiveIndices(1);
             Scrollbar.onValueChanged.AddListener(OnScrollbarValue);
         }
 
@@ -181,11 +176,6 @@ namespace pooledList
             return row;
         }
 
-        private bool RowIsActive(int row)
-        {
-            return row >= ActiveIndices.x && row <= ActiveIndices.y;
-        }
-
         /// <summary>
         /// Mark tiles as active or inactive
         /// </summary>
@@ -200,7 +190,16 @@ namespace pooledList
 
             Vector2 newActiveIndices = CalculateActiveIndices(px);
 
-            if (ActiveIndices != newActiveIndices) //If they're the same, ignore!
+            //Special case for first 
+            if (ActiveIndices == Vector2.zero)
+            {
+                for (int i = (int) newActiveIndices.x; i <= newActiveIndices.y; i++)
+                {
+                    ActivateRow(i,true);
+                }
+                ActiveIndices = newActiveIndices;
+            }
+            else if (ActiveIndices != newActiveIndices) //If they're the same, ignore!
             {
                 /*
                  * lets say we are moving from 1,5 to 3,7
@@ -208,8 +207,7 @@ namespace pooledList
                  * We need to activate [6,7]
                  * */
                 Vector2 diff = newActiveIndices - ActiveIndices;
-                Debug.Log(diff);
-
+                Debug.Log("diff: " + diff);
 
                 //positive is iterating higher through the rows
 
@@ -218,26 +216,28 @@ namespace pooledList
                 //if y > 0, activate where newActive.y >= row > Active.y
                 //if y < 0, deactivate where Active.y <= row < newActive.y  //equal to because we are disabling the old active up until the new active
 
+                //Deactivate first
                 if (diff.x > 0)
                 {
                     for (int i = (int)ActiveIndices.x; i < newActiveIndices.x; i++)
                         ActivateRow(i, false);
                 }
-                else if (diff.x < 0)
+                if (diff.y < 0)
                 {
-                    for (int i = (int)ActiveIndices.x; i >= newActiveIndices.x; i--)
+                    for (int i = (int)ActiveIndices.y; i > newActiveIndices.y; i--)
+                        ActivateRow(i, false);
+                }
+                
+                //Then activate
+                if (diff.x < 0)
+                {
+                    for (int i = (int)newActiveIndices.x; i < ActiveIndices.x; i++)
                         ActivateRow(i, true);
                 }
-
                 if (diff.y > 0)
                 {
                     for (int i = (int)ActiveIndices.y + 1; i <= newActiveIndices.y; i++)
                         ActivateRow(i, true);
-                }
-                else if (diff.y < 0)
-                {
-                    for (int i = (int)ActiveIndices.y; i > newActiveIndices.y; i--)
-                        ActivateRow(i, false);
                 }
 
                 ActiveIndices = newActiveIndices;
@@ -251,6 +251,10 @@ namespace pooledList
             {
                 if (activate)
                 {
+                    if (item.item != null)
+                    {
+                        Debug.LogError("wtfux row : " + row + " already has one!");
+                    }
                     T poolItem = GetObjectFromPool(item.data);
                     item.item = poolItem;
                     poolItem.transform.SetParent(item.transform, false);
@@ -258,6 +262,7 @@ namespace pooledList
                 else
                 {
                     ReturnObjectToPool((T) item.item);
+                    item.item = null;
                 }
             }
         }
@@ -276,6 +281,10 @@ namespace pooledList
             int min = ViewableRowAtPos(lowestPosVisible);
             int max = ViewableRowAtPos(highestPosVisible);
 
+//            int min = Mathf.Max(ViewableRowAtPos(lowestPosVisible) - BufferedRows, 0);
+//            int max = Mathf.Min(ViewableRowAtPos(highestPosVisible) + BufferedRows, rows);
+
+
             Debug.Log("Calculated active indices as: " + min + " , " + max);
             return new Vector2(min, max);
         }
@@ -291,7 +300,7 @@ namespace pooledList
             foreach (var item in data)
                 AddData(item);
             doNotUpdate = false;
-            ActiveIndices = CalculateActiveIndices(Scrollbar.value);
+//            ActiveIndices = CalculateActiveIndices(Scrollbar.value);
             Scrollbar.onValueChanged.Invoke(1);
         }
 
@@ -345,8 +354,10 @@ namespace pooledList
             }
             else if (PoolSize > 0)
             {
-                Debug.LogError("Exceed Pool Limit: " + PoolSize);
+                Debug.Log("Exceed Pool Limit: " + PoolSize);
             }
+
+            retv.SetData((U) dataItem);
 
             return retv;
         }
@@ -370,6 +381,43 @@ namespace pooledList
             }
             InUse.Clear();
             Empties.Clear();
+        }
+
+        private int _maxActiveCells = -1;
+        private int MaxActiveCells
+        {
+            get
+            {
+                if (_maxActiveCells == -1)
+                {
+
+                    _maxActiveCells = MaxVisibleConstrainedAxis*MaxVisiblePrimaryAxis;
+                }
+                return _maxActiveCells;
+            }
+        }
+
+        //e.g. max visible rows
+        private int MaxVisiblePrimaryAxis
+        {
+            get
+            {
+                return (int) (VisibleRect.rect.height/CellSize.y + 2);
+            }
+        }
+
+        //e.g. max visible columns
+        private int MaxVisibleConstrainedAxis
+        {
+            get
+            {
+                return columns;
+            }
+        }
+
+        private bool RowIsActive(int row)
+        {
+            return row >= ActiveIndices.x && row <= ActiveIndices.y;
         }
     }
 }
