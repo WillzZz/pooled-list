@@ -102,7 +102,9 @@ namespace pooledList
         {
             get
             {
-                return 4; 
+                return constraint == GridLayoutGroup.Constraint.FixedColumnCount
+                    ? Grid.constraintCount
+                    : Empties.Count;
             }
         }
 
@@ -110,10 +112,26 @@ namespace pooledList
         {
             get
             {
-                return Empties.Count; 
-                
+                return constraint == GridLayoutGroup.Constraint.FixedRowCount
+                    ? Grid.constraintCount
+                    : Empties.Count;
             } 
-            
+        }
+
+        protected int constrainedAxisCount
+        {
+            get
+            {
+                return Grid.constraintCount;
+            }
+        }
+
+        protected int secondaryAxisCount
+        {
+            get
+            {
+                return Empties.Count;
+            }
         }
 
         //These can both offer Null Refs if Grid isn't added. That's to be expected.
@@ -161,8 +179,6 @@ namespace pooledList
         }
 
         private bool doNotUpdate;
-        private int itemCt;
-
         private float _width = -1f;
         private float width
         {
@@ -198,7 +214,6 @@ namespace pooledList
         }
 
 
-        private bool CacheViewArea = false;
         //Cache to optimize.
         //Could support dynamically sizing lists if we did not cache
         private Vector2 _viewableArea = Vector2.zero;
@@ -208,7 +223,7 @@ namespace pooledList
             {
                 if (VisibleRect == null) return Vector2.zero;
 
-                if (!CacheViewArea || _viewableArea == Vector2.zero)
+                if (_viewableArea == Vector2.zero)
                     _viewableArea = new Vector2(VisibleRect.rect.width, VisibleRect.rect.height);
 
                 return _viewableArea;
@@ -223,13 +238,17 @@ namespace pooledList
 
         private List<PoolEmptyObject> GetRowForNextEmpty()
         {
-            bool createNext = itemCt % columns == 0; //mod 0 means last row is full
-            List<PoolEmptyObject> row = createNext ? new List<PoolEmptyObject>() : Empties.Last();
-            if (createNext)
+
+            if (Empties.Count > 0)
             {
-                Empties.Add(row);
-                RecalculateSize();
+                List<PoolEmptyObject> lastRow = Empties.Last();
+                if (lastRow.Count % columns != 0)
+                    return lastRow;
             }
+            
+            List<PoolEmptyObject> row = new List<PoolEmptyObject>();
+            Empties.Add(row);
+            RecalculateSize();
 
             return row;
         }
@@ -276,6 +295,7 @@ namespace pooledList
                 //if y < 0, deactivate where Active.y <= row < newActive.y  //equal to because we are disabling the old active up until the new active
 
                 
+                //TODO Is there a cleaner way to write this logic?
                 //Deactivate first
                 if (diff.x > 0)
                 {
@@ -402,7 +422,6 @@ namespace pooledList
         public void AddData(U dataItem)
         {
             CreateEmptyObject(dataItem);
-            itemCt++;
         }
 
         private T CreateT(U dataItem)
