@@ -203,7 +203,7 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 1012503465}
-  m_RootOrder: 3
+  m_RootOrder: 2
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
@@ -270,11 +270,11 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 1185046025}
   m_RootOrder: 0
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
+  m_AnchorMin: {x: .5, y: .5}
+  m_AnchorMax: {x: .5, y: .5}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 800, y: 400}
-  m_Pivot: {x: 0, y: 1}
+  m_Pivot: {x: .5, y: .5}
 --- !u!114 &518470645
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -299,38 +299,6 @@ MonoBehaviour:
   m_Spacing: {x: 5, y: 5}
   m_Constraint: 1
   m_ConstraintCount: 4
---- !u!1 &560264754
-GameObject:
-  m_ObjectHideFlags: 0
-  m_PrefabParentObject: {fileID: 0}
-  m_PrefabInternal: {fileID: 0}
-  serializedVersion: 4
-  m_Component:
-  - 224: {fileID: 560264755}
-  m_Layer: 5
-  m_Name: PoolParent
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 0
---- !u!224 &560264755
-RectTransform:
-  m_ObjectHideFlags: 0
-  m_PrefabParentObject: {fileID: 0}
-  m_PrefabInternal: {fileID: 0}
-  m_GameObject: {fileID: 560264754}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_Children: []
-  m_Father: {fileID: 1012503465}
-  m_RootOrder: 0
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
-  m_Pivot: {x: .5, y: .5}
 --- !u!1 &1012503464
 GameObject:
   m_ObjectHideFlags: 0
@@ -359,7 +327,6 @@ RectTransform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children:
-  - {fileID: 560264755}
   - {fileID: 1890685219}
   - {fileID: 1185046025}
   - {fileID: 273725532}
@@ -410,17 +377,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   VisibleRect: {fileID: 1185046025}
   ScrollRect: {fileID: 1185046029}
-  Scrollbar: {fileID: 1890685218}
   Grid: {fileID: 518470645}
-  Content: {fileID: 518470644}
   Tile: {fileID: 100002, guid: 5504188eae96f5c43b870a7b6ae03eef, type: 2}
-  Prepopulate: 1
-  PoolSize: 80
-  PoolParent: {fileID: 560264755}
-  CellSize: {x: 195, y: 76}
-  Padding: {x: 5, y: 5}
-  columns: 4
+  PoolSize: 60
   BufferedRows: 1
+  columns: 4
 --- !u!1 &1185046024
 GameObject:
   m_ObjectHideFlags: 0
@@ -453,11 +414,11 @@ RectTransform:
   m_Children:
   - {fileID: 518470644}
   m_Father: {fileID: 1012503465}
-  m_RootOrder: 2
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 1, y: 1}
+  m_RootOrder: 1
+  m_AnchorMin: {x: .5, y: .5}
+  m_AnchorMax: {x: .5, y: .5}
   m_AnchoredPosition: {x: 0, y: -10}
-  m_SizeDelta: {x: -20, y: -20}
+  m_SizeDelta: {x: 800, y: 400}
   m_Pivot: {x: .5, y: .5}
 --- !u!114 &1185046026
 MonoBehaviour:
@@ -520,7 +481,7 @@ MonoBehaviour:
   m_Elasticity: .100000001
   m_Inertia: 1
   m_DecelerationRate: .135000005
-  m_ScrollSensitivity: 1
+  m_ScrollSensitivity: 20
   m_HorizontalScrollbar: {fileID: 0}
   m_VerticalScrollbar: {fileID: 1890685218}
   m_OnValueChanged:
@@ -828,7 +789,7 @@ RectTransform:
   m_Children:
   - {fileID: 1654810578}
   m_Father: {fileID: 1012503465}
-  m_RootOrder: 1
+  m_RootOrder: 0
   m_AnchorMin: {x: 1, y: 0}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: -9.53674316e-06}

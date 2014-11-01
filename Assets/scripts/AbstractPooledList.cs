@@ -12,29 +12,14 @@ namespace pooledList
 
     {
         /// <summary>
-        /// Used to determine the "visible" area of our list
-        /// </summary>
-        public RectTransform VisibleRect;
-
-        /// <summary>
         /// When setting Horizontal/Vertical, we need to set the scrollrect as well.
         /// </summary>
         public ScrollRect ScrollRect;
 
         /// <summary>
-        /// The scrollbar for our list
-        /// </summary>
-        public Scrollbar Scrollbar;
-
-        /// <summary>
         /// Our grid object
         /// </summary>
         public GridLayoutGroup Grid;
-
-        /// <summary>
-        /// Sizes our content
-        /// </summary>
-        public RectTransform Content;
 
         /// <summary>
         /// Prefab of our Tile object. 
@@ -43,40 +28,138 @@ namespace pooledList
         public GameObject Tile;
 
         /// <summary>
-        /// Whether or not to prepopulate at awake(start?) time.
-        /// This will create an upfront perf cost instead of deferring.
-        /// </summary>
-        public bool Prepopulate; 
-        
-        /// <summary>
         /// This represents the number of objects that are retained and used in our pool
-        /// This indirectly determines how much "buffer" you have, as well
-        /// e.g. A grid with Rows of 5 columns and 4 visible rows
-        ///      With a PoolSize of 20, we have *no* buffer
-        ///      But with 40, we have a buffer of 20 (10 on each side!)
         /// </summary>
         public int PoolSize;
 
         /// <summary>
+        /// The buffer is how many extra items in each direction
+        /// to include as an added precaching mechanism.
+        /// This is measured in rows or columns
+        /// </summary>
+        public int Buffer;
+
+
+        private GridLayoutGroup.Constraint _constraint;
+        private GridLayoutGroup.Constraint constraint
+        {
+            get
+            {
+                if (Grid.constraint == GridLayoutGroup.Constraint.Flexible)
+                    throw new PooledListException("PooledList does not support the Flexible GridConstraint");
+                return Grid.constraint;
+            }
+        }
+        /// <summary>
+        /// The scrollbar for our list
+        /// </summary>
+        protected Scrollbar Scrollbar
+        {
+            get
+            {
+                return constraint == GridLayoutGroup.Constraint.FixedRowCount ?
+                    ScrollRect.horizontalScrollbar :
+                    ScrollRect.verticalScrollbar;
+            }
+        }
+        /// <summary>
         /// The parent of objects which are in the pool. This is inactive!
         /// </summary>
-        public Transform PoolParent;
+        private Transform _poolParent;
+        protected Transform PoolParent
+        {
+            get
+            {
+                if (_poolParent == null)
+                {
+                    GameObject go = new GameObject("PoolParent", typeof(RectTransform));
+                    go.SetActive(false);
+                    _poolParent = go.transform;
+                    _poolParent.SetParent(transform);
+                }
 
-        public Vector2 CellSize;
-        public Vector2 Padding;
-        public int BufferedRows;
-        public int columns;
+                return _poolParent;
+            }
+        }
+
+        /// <summary>
+        /// Used to determine the "visible" area of our list
+        /// </summary>
+        private RectTransform _visibleRect;
+        protected RectTransform VisibleRect
+        {
+            get
+            {
+                if (ScrollRect != null && _visibleRect == null)
+                {
+                    _visibleRect = ScrollRect.GetComponent<RectTransform>();
+                }
+                return _visibleRect;
+            }
+        }
+
+        protected int columns
+        {
+            get
+            {
+                return 4; 
+            }
+        }
+
+        protected int rows
+        {
+            get
+            {
+                return Empties.Count; 
+                
+            } 
+            
+        }
+
+        //These can both offer Null Refs if Grid isn't added. That's to be expected.
+        protected Vector2 CellSize { get { return Grid.cellSize; } }
+        protected Vector2 Spacing { get { return Grid.spacing; } }
 
         protected readonly List<List<PoolEmptyObject>> Empties = new List<List<PoolEmptyObject>>(); 
         protected readonly Stack<T> Pool = new Stack<T>(); 
         protected readonly List<T> InUse = new List<T>();
 
         //Track the first and last index of currently active tiles
-        private Vector2 ActiveIndices = Vector2.zero;
+        protected Vector2 ActiveIndices = Vector2.zero;
 
         //TODO: Allow for horizontal expanding lists!
-        
-        private int rows { get { return Empties.Count; } }
+
+        protected virtual void Awake()
+        {
+            if (Grid == null)
+            {
+                Debug.LogError("PooledList has no Grid component. Please set one via Inspector.");
+            }
+            else if (Grid.constraint == GridLayoutGroup.Constraint.Flexible)
+            {
+                Debug.LogError("PooledList does not yet support Flexible Grid constraint");
+            }
+
+            if (ScrollRect == null)
+            {
+                Debug.LogError("PooledList has no ScrollRect component. Please set one via Inspector.");
+            }
+
+            if (Scrollbar == null)
+            {
+                Debug.LogError("PooledList cannot find a scrollbar. Please ensure ScrollRect has one set.");
+            }
+
+            if (Tile == null)
+            {
+                Debug.LogError("PooledList does not have a Tile Prefab set. ");
+            }
+        }
+        protected virtual void Start()
+        {
+            Scrollbar.onValueChanged.AddListener(OnScrollbarValue);
+        }
+
         private bool doNotUpdate;
         private int itemCt;
 
@@ -103,51 +186,39 @@ namespace pooledList
         {
             get
             {
-                return (columns - 1) * Padding.x;
+                return (columns - 1) * Spacing.x;
             }
         }
         private float totalPaddingY
         {
             get
             {
-                return (rows - 1) * Padding.y;
+                return (rows - 1) * Spacing.y;
             }
         }
 
-        private Vector2 _viewableArea = Vector2.zero;
 
+        private bool CacheViewArea = false;
+        //Cache to optimize.
+        //Could support dynamically sizing lists if we did not cache
+        private Vector2 _viewableArea = Vector2.zero;
         private Vector2 viewableArea
         {
             get
             {
                 if (VisibleRect == null) return Vector2.zero;
 
-                if (_viewableArea == Vector2.zero)
+                if (!CacheViewArea || _viewableArea == Vector2.zero)
                     _viewableArea = new Vector2(VisibleRect.rect.width, VisibleRect.rect.height);
 
                 return _viewableArea;
             }
         }
-        protected virtual void Awake()
-        {
-            //TODO: Calculate rows/columns?
 
-            if (Prepopulate)
-            {
-                //TODO
-            }
-
-
-            Scrollbar.onValueChanged.AddListener(OnScrollbarValue);
-        }
-
-        protected virtual void Start()
-        {
-        }
         private void RecalculateSize()
         {
             //TODO Need to adjust this for differing anchor setups
-            Content.sizeDelta = new Vector2(width, height);
+            ScrollRect.content.sizeDelta = new Vector2(width, height);
         }
 
         private List<PoolEmptyObject> GetRowForNextEmpty()
@@ -232,12 +303,14 @@ namespace pooledList
             }
             ActiveIndices = newActiveIndices;
 
-                if (performCorrection)
-                    CorrectErrors();
+            if (performCorrection)
+                CorrectErrors();
         }
 
         /// <summary>
         /// Perform Error Correction
+        /// It's possible to be seeking through your list too quickly
+        /// This can result in orphaned tiles, so we clean them up.
         /// </summary>
         private void CorrectErrors()
         {
@@ -253,6 +326,11 @@ namespace pooledList
             }
 
             Debug.LogError("Correction was necessary for " + incorrect + " rows");
+        }
+
+        private bool RowIsActive(int row)
+        {
+            return row >= ActiveIndices.x && row <= ActiveIndices.y;
         }
 
         /// <summary>
@@ -300,8 +378,8 @@ namespace pooledList
             float lowestPosVisible = pos;
             float highestPosVisible = pos + viewableArea.y;
 
-            int min = Mathf.Max(ViewableRowAtPos(lowestPosVisible) - BufferedRows, 0);
-            int max = Mathf.Min(ViewableRowAtPos(highestPosVisible) + BufferedRows, rows-1);
+            int min = Mathf.Max(ViewableRowAtPos(lowestPosVisible) - Buffer, 0);
+            int max = Mathf.Min(ViewableRowAtPos(highestPosVisible) + Buffer, rows-1);
 
 
             return new Vector2(min, max);
@@ -309,7 +387,7 @@ namespace pooledList
 
         private int ViewableRowAtPos(float pos)
         {
-            return (int)(pos / (CellSize.y + Padding.y));
+            return (int)(pos / (CellSize.y + Spacing.y));
         }
 
         public void AddData(IEnumerable<U> data)
@@ -339,7 +417,6 @@ namespace pooledList
             T newTile = go.GetComponent<T>();
             newTile.transform.SetParent(Grid.transform, false);
             newTile.SetData(dataItem);
-            InUse.Add(newTile);
             return newTile;
         }
 
@@ -363,7 +440,6 @@ namespace pooledList
             {
                 //Use from the pool
                 retv = Pool.Pop();
-                InUse.Add(retv);
             }
             else if (Pool.Count + InUse.Count < PoolSize)
             {
@@ -374,8 +450,8 @@ namespace pooledList
             {
                 throw new Exception("Pool Limit Exceeded. PoolSize: " + PoolSize);
             }
-
             retv.SetData((U) dataItem);
+            InUse.Add(retv);
 
             return retv;
         }
@@ -400,7 +476,7 @@ namespace pooledList
             InUse.Clear();
             Empties.Clear();
         }
-
+        /*
         private int _maxActiveCells = -1;
         private int MaxActiveCells
         {
@@ -433,9 +509,15 @@ namespace pooledList
             }
         }
 
-        private bool RowIsActive(int row)
+        */
+        
+    }
+
+    internal class PooledListException : Exception
+    {
+        
+        public PooledListException(string message) : base(message)
         {
-            return row >= ActiveIndices.x && row <= ActiveIndices.y;
         }
     }
 }
