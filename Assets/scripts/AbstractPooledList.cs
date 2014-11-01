@@ -51,6 +51,14 @@ namespace pooledList
                 return Grid.constraint;
             }
         }
+
+        private bool IsVertical
+        {
+            get
+            {
+                return constraint == GridLayoutGroup.Constraint.FixedColumnCount;
+            }
+        }
         /// <summary>
         /// The scrollbar for our list
         /// </summary>
@@ -58,9 +66,9 @@ namespace pooledList
         {
             get
             {
-                return constraint == GridLayoutGroup.Constraint.FixedRowCount ?
-                    ScrollRect.horizontalScrollbar :
-                    ScrollRect.verticalScrollbar;
+                return IsVertical
+                    ? ScrollRect.verticalScrollbar
+                    : ScrollRect.horizontalScrollbar;
             }
         }
         /// <summary>
@@ -99,41 +107,10 @@ namespace pooledList
             }
         }
 
-        protected int columns
-        {
-            get
-            {
-                return constraint == GridLayoutGroup.Constraint.FixedColumnCount
-                    ? Grid.constraintCount
-                    : Empties.Count;
-            }
-        }
-
-        protected int rows
-        {
-            get
-            {
-                return constraint == GridLayoutGroup.Constraint.FixedRowCount
-                    ? Grid.constraintCount
-                    : Empties.Count;
-            } 
-        }
-
-        protected int constrainedAxisCount
-        {
-            get
-            {
-                return Grid.constraintCount;
-            }
-        }
-
-        protected int secondaryAxisCount
-        {
-            get
-            {
-                return Empties.Count;
-            }
-        }
+        protected int columns { get{ return IsVertical ? Grid.constraintCount : Empties.Count; }}
+        protected int rows { get { return IsVertical ? Empties.Count : Grid.constraintCount; } }
+        protected int constrainedAxisCount { get { return Grid.constraintCount; }}
+        protected int secondaryAxisCount { get { return Empties.Count; }}
 
         //These can both offer Null Refs if Grid isn't added. That's to be expected.
         protected Vector2 CellSize { get { return Grid.cellSize; } }
@@ -165,10 +142,10 @@ namespace pooledList
             }
             else
             {
-                if (constraint == GridLayoutGroup.Constraint.FixedRowCount)
-                    ScrollRect.verticalScrollbar.gameObject.SetActive(false);
-                else
+                if (IsVertical)
                     ScrollRect.horizontalScrollbar.gameObject.SetActive(false);
+                else
+                    ScrollRect.verticalScrollbar.gameObject.SetActive(false);
             }
 
             if (Scrollbar == null)
@@ -330,21 +307,15 @@ namespace pooledList
         /// Perform Error Correction
         /// It's possible to be seeking through your list too quickly
         /// This can result in orphaned tiles, so we clean them up.
+        /// This is relatively slow, as it requires iterating everything.
         /// </summary>
         private void CorrectErrors()
         {
             //We need to iterate each row and enable or disable accordingly. Sadly.
-
-            int incorrect = 0;
             for (int i = 0; i < Empties.Count; i++)
             {
-                //I need to know if it was necessary.
-                bool correct = ActivateList(i, ListIsActive(i));
-                if (!correct)
-                    incorrect++;
+                ActivateList(i, ListIsActive(i));
             }
-
-            Debug.LogError("Correction was necessary for " + incorrect + " rows");
         }
 
         private bool ListIsActive(int index)
@@ -391,9 +362,9 @@ namespace pooledList
         {
             if (VisibleRect == null) return Vector2.zero;
 
-            float pos = Mathf.Lerp(FullScrollbarValue, 0f, scrollbarValue); //Lerp from the top to the bottom of scrollbar to determine position
+            float pos = ScrollBarPos;
 
-            float viewableSecondaryAxis = constraint == GridLayoutGroup.Constraint.FixedRowCount ? viewableArea.x : viewableArea.y;
+            float viewableSecondaryAxis = IsVertical ? viewableArea.y : viewableArea.x;
             float lowestPosVisible = pos;
             float highestPosVisible = pos + viewableSecondaryAxis;
 
@@ -402,72 +373,48 @@ namespace pooledList
 
             return new Vector2(min, max);
         }
-        /*
-        private Vector2 CalculateActiveIndices(float scrollbarValue)
-        {
-            if (VisibleRect == null) return Vector2.zero;
-
-            float fullScrollbarValue = height - viewableArea.y;
-            float pos = Mathf.Lerp(fullScrollbarValue, 0f, scrollbarValue); //Lerp from the top to the bottom of scrollbar to determine position
-
-            float lowestPosVisible = pos;
-            float highestPosVisible = pos + viewableArea.y;
-
-            int min = Mathf.Max(ViewableRowAtPos(lowestPosVisible) - Buffer, 0);
-            int max = Mathf.Min(ViewableRowAtPos(highestPosVisible) + Buffer, rows - 1);
-
-
-            return new Vector2(min, max);
-        }*/
 
         private float FullScrollbarValue
         {
             get
             {
-                return constraint == GridLayoutGroup.Constraint.FixedColumnCount 
+                return IsVertical
                     ? height - viewableArea.y 
                     : width  - viewableArea.x;
             }
         }
 
-        private Vector2 CalculateActiveIndicesHorizontal(float scrollbarValue)
+        private float ScrollBarPos
         {
-            if (VisibleRect == null) return Vector2.zero;
+            get
+            {
+                float start = IsVertical ? FullScrollbarValue : 0f;
+                float end = IsVertical ? 0f : FullScrollbarValue;
+                return Mathf.Lerp(start, end, Scrollbar.value); //Lerp from the top to the bottom of scrollbar to determine position
+            }
+        }
 
-            float fullScrollbarValue = width - viewableArea.x;
-            float pos = Mathf.Lerp(fullScrollbarValue, 0f, scrollbarValue); //Lerp from the top to the bottom of scrollbar to determine position
-
-            float lowestPosVisible = pos;
-            float highestPosVisible = pos + viewableArea.x;
-
-            int min = Mathf.Max(ViewableColAtPos(lowestPosVisible) - Buffer, 0);
-            int max = Mathf.Min(ViewableColAtPos(highestPosVisible) + Buffer, columns - 1);
-
-
-            return new Vector2(min, max);
+        private float DefaultScrollValue
+        {
+            get
+            {
+                return IsVertical ? 1f : 0f;
+            }
         }
 
         private int ViewableIndexAtPos(float pos)
         {
-            return constraint == GridLayoutGroup.Constraint.FixedColumnCount
+            return IsVertical
                 ? (int)(pos / (CellSize.y + Spacing.y))
                 : (int)(pos / (CellSize.x + Spacing.x));
 
-        }
-        private int ViewableRowAtPos(float pos)
-        {
-            return (int)(pos / (CellSize.y + Spacing.y));
-        }
-        private int ViewableColAtPos(float pos)
-        {
-            return (int)(pos / (CellSize.x + Spacing.x));
         }
 
         public void AddData(IEnumerable<U> data)
         {
             foreach (var item in data)
                 AddData(item);
-            Scrollbar.onValueChanged.Invoke(1);
+            Scrollbar.onValueChanged.Invoke(DefaultScrollValue);
         }
 
         public void AddData(U dataItem)
