@@ -64,11 +64,10 @@ namespace pooledList
 
         public Vector2 CellSize;
         public Vector2 Padding;
-        public int columns;
         public int BufferedRows;
+        public int columns;
 
-        protected List<List<PoolEmptyObject>> Empties = new List<List<PoolEmptyObject>>(); 
-
+        protected readonly List<List<PoolEmptyObject>> Empties = new List<List<PoolEmptyObject>>(); 
         protected readonly Stack<T> Pool = new Stack<T>(); 
         protected readonly List<T> InUse = new List<T>();
 
@@ -78,8 +77,8 @@ namespace pooledList
         //TODO: Allow for horizontal expanding lists!
         
         private int rows { get { return Empties.Count; } }
-        private bool doNotUpdate = false;
-        private int itemCt = 0;
+        private bool doNotUpdate;
+        private int itemCt;
 
         private float _width = -1f;
         private float width
@@ -133,18 +132,6 @@ namespace pooledList
         {
             //TODO: Calculate rows/columns?
 
-            //add a listener to scrollbar on value changed
-            //when that updates, we can check what is visible!
-            //we need a list of active items (or rather, a start and end index for what is active)
-            //In the vertical only, we have a start row and end row to know what is active
-            //  for horizontal, we have start col, end col
-
-            //when an update happens, we need to know what should be active, and if that has changed, we should make some inactive (and return to pool)
-            //      and then activate and add an item from pool to anything that is becoming active
-
-            
-            //viewable rows: 
-
             if (Prepopulate)
             {
                 //TODO
@@ -188,7 +175,9 @@ namespace pooledList
                 ScrollRect == null)
                 return;
 
+
             Vector2 newActiveIndices = CalculateActiveIndices(px);
+            bool performCorrection = false;
 
             //Special case for first 
             if (ActiveIndices == Vector2.zero)
@@ -197,7 +186,6 @@ namespace pooledList
                 {
                     ActivateRow(i,true);
                 }
-                ActiveIndices = newActiveIndices;
             }
             else if (ActiveIndices != newActiveIndices) //If they're the same, ignore!
             {
@@ -207,7 +195,7 @@ namespace pooledList
                  * We need to activate [6,7]
                  * */
                 Vector2 diff = newActiveIndices - ActiveIndices;
-                Debug.Log("diff: " + diff);
+//                Debug.Log("diff: " + diff + " active: " + ActiveIndices + " new: " + newActiveIndices + " pool: " + Pool.Count + " inuse: " + InUse.Count);
 
                 //positive is iterating higher through the rows
 
@@ -216,35 +204,64 @@ namespace pooledList
                 //if y > 0, activate where newActive.y >= row > Active.y
                 //if y < 0, deactivate where Active.y <= row < newActive.y  //equal to because we are disabling the old active up until the new active
 
+                
                 //Deactivate first
                 if (diff.x > 0)
                 {
                     for (int i = (int)ActiveIndices.x; i < newActiveIndices.x; i++)
-                        ActivateRow(i, false);
+                        performCorrection = performCorrection || ActivateRow(i, false);
                 }
                 if (diff.y < 0)
                 {
                     for (int i = (int)ActiveIndices.y; i > newActiveIndices.y; i--)
-                        ActivateRow(i, false);
+                        performCorrection = performCorrection || ActivateRow(i, false);
                 }
                 
                 //Then activate
                 if (diff.x < 0)
                 {
                     for (int i = (int)newActiveIndices.x; i < ActiveIndices.x; i++)
-                        ActivateRow(i, true);
+                        performCorrection = performCorrection || ActivateRow(i, true);
                 }
                 if (diff.y > 0)
                 {
                     for (int i = (int)ActiveIndices.y + 1; i <= newActiveIndices.y; i++)
-                        ActivateRow(i, true);
+                        performCorrection = performCorrection || ActivateRow(i, true);
                 }
 
-                ActiveIndices = newActiveIndices;
             }
+            ActiveIndices = newActiveIndices;
+
+                if (performCorrection)
+                    CorrectErrors();
         }
 
-        private void ActivateRow(int row, bool activate)
+        /// <summary>
+        /// Perform Error Correction
+        /// </summary>
+        private void CorrectErrors()
+        {
+            //We need to iterate each row and enable or disable accordingly. Sadly.
+
+            int incorrect = 0;
+            for (int i = 0; i < Empties.Count; i++)
+            {
+                //I need to know if it was necessary.
+                bool correct = ActivateRow(i, RowIsActive(i));
+                if (!correct)
+                    incorrect++;
+            }
+
+            Debug.LogError("Correction was necessary for " + incorrect + " rows");
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="row"></param>
+        /// <param name="activate"></param>
+        /// <returns>Whether to preform a full update upon a failure</returns>
+        private bool ActivateRow(int row, bool activate)
         {
             List<PoolEmptyObject> rowToAdjust = Empties[row];
             foreach (var item in rowToAdjust)
@@ -253,7 +270,7 @@ namespace pooledList
                 {
                     if (item.item != null)
                     {
-                        Debug.LogError("wtfux row : " + row + " already has one!");
+                        return true;
                     }
                     T poolItem = GetObjectFromPool(item.data);
                     item.item = poolItem;
@@ -261,10 +278,15 @@ namespace pooledList
                 }
                 else
                 {
+                    if (item.item == null)
+                    {
+                        return true;
+                    }
                     ReturnObjectToPool((T) item.item);
                     item.item = null;
                 }
             }
+            return false;
         }
 
         //TODO: This assumes vertical scrolling only!
@@ -278,14 +300,10 @@ namespace pooledList
             float lowestPosVisible = pos;
             float highestPosVisible = pos + viewableArea.y;
 
-            int min = ViewableRowAtPos(lowestPosVisible);
-            int max = ViewableRowAtPos(highestPosVisible);
-
-//            int min = Mathf.Max(ViewableRowAtPos(lowestPosVisible) - BufferedRows, 0);
-//            int max = Mathf.Min(ViewableRowAtPos(highestPosVisible) + BufferedRows, rows);
+            int min = Mathf.Max(ViewableRowAtPos(lowestPosVisible) - BufferedRows, 0);
+            int max = Mathf.Min(ViewableRowAtPos(highestPosVisible) + BufferedRows, rows-1);
 
 
-            Debug.Log("Calculated active indices as: " + min + " , " + max);
             return new Vector2(min, max);
         }
 
@@ -300,7 +318,6 @@ namespace pooledList
             foreach (var item in data)
                 AddData(item);
             doNotUpdate = false;
-//            ActiveIndices = CalculateActiveIndices(Scrollbar.value);
             Scrollbar.onValueChanged.Invoke(1);
         }
 
@@ -346,6 +363,7 @@ namespace pooledList
             {
                 //Use from the pool
                 retv = Pool.Pop();
+                InUse.Add(retv);
             }
             else if (Pool.Count + InUse.Count < PoolSize)
             {
@@ -354,7 +372,7 @@ namespace pooledList
             }
             else if (PoolSize > 0)
             {
-                Debug.Log("Exceed Pool Limit: " + PoolSize);
+                throw new Exception("Pool Limit Exceeded. PoolSize: " + PoolSize);
             }
 
             retv.SetData((U) dataItem);
