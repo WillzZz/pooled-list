@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -162,6 +163,13 @@ namespace pooledList
             {
                 Debug.LogError("PooledList has no ScrollRect component. Please set one via Inspector.");
             }
+            else
+            {
+                if (constraint == GridLayoutGroup.Constraint.FixedRowCount)
+                    ScrollRect.verticalScrollbar.gameObject.SetActive(false);
+                else
+                    ScrollRect.horizontalScrollbar.gameObject.SetActive(false);
+            }
 
             if (Scrollbar == null)
             {
@@ -178,19 +186,13 @@ namespace pooledList
             Scrollbar.onValueChanged.AddListener(OnScrollbarValue);
         }
 
-        private bool doNotUpdate;
-        private float _width = -1f;
         private float width
         {
             get
             {
-                if (_width == -1f)
-                    _width = columns * (CellSize.x) + totalPaddingX;
-
-                return _width;
+                return columns * (CellSize.x) + totalPaddingX;
             }
         }
-
         private float height
         {
             get
@@ -236,21 +238,20 @@ namespace pooledList
             ScrollRect.content.sizeDelta = new Vector2(width, height);
         }
 
-        private List<PoolEmptyObject> GetRowForNextEmpty()
+        private List<PoolEmptyObject> GetListForNextEmpty()
         {
-
             if (Empties.Count > 0)
             {
-                List<PoolEmptyObject> lastRow = Empties.Last();
-                if (lastRow.Count % columns != 0)
-                    return lastRow;
+                List<PoolEmptyObject> last = Empties.Last();
+                if (last.Count % constrainedAxisCount != 0)
+                    return last;
             }
             
-            List<PoolEmptyObject> row = new List<PoolEmptyObject>();
-            Empties.Add(row);
+            List<PoolEmptyObject> newList = new List<PoolEmptyObject>();
+            Empties.Add(newList);
             RecalculateSize();
 
-            return row;
+            return newList;
         }
 
         /// <summary>
@@ -259,9 +260,7 @@ namespace pooledList
         /// <param name="px"></param>
         protected void OnScrollbarValue(float px)
         {
-            if (doNotUpdate ||
-                VisibleRect == null ||
-                Grid == null ||
+            if (Grid == null ||
                 ScrollRect == null)
                 return;
 
@@ -274,7 +273,7 @@ namespace pooledList
             {
                 for (int i = (int) newActiveIndices.x; i <= newActiveIndices.y; i++)
                 {
-                    ActivateRow(i,true);
+                    ActivateList(i,true);
                 }
             }
             else if (ActiveIndices != newActiveIndices) //If they're the same, ignore!
@@ -285,7 +284,7 @@ namespace pooledList
                  * We need to activate [6,7]
                  * */
                 Vector2 diff = newActiveIndices - ActiveIndices;
-//                Debug.Log("diff: " + diff + " active: " + ActiveIndices + " new: " + newActiveIndices + " pool: " + Pool.Count + " inuse: " + InUse.Count);
+                Debug.Log("diff: " + diff + " active: " + ActiveIndices + " new: " + newActiveIndices + " pool: " + Pool.Count + " inuse: " + InUse.Count);
 
                 //positive is iterating higher through the rows
 
@@ -300,24 +299,24 @@ namespace pooledList
                 if (diff.x > 0)
                 {
                     for (int i = (int)ActiveIndices.x; i < newActiveIndices.x; i++)
-                        performCorrection = performCorrection || ActivateRow(i, false);
+                        performCorrection = performCorrection || ActivateList(i, false);
                 }
                 if (diff.y < 0)
                 {
                     for (int i = (int)ActiveIndices.y; i > newActiveIndices.y; i--)
-                        performCorrection = performCorrection || ActivateRow(i, false);
+                        performCorrection = performCorrection || ActivateList(i, false);
                 }
                 
                 //Then activate
                 if (diff.x < 0)
                 {
                     for (int i = (int)newActiveIndices.x; i < ActiveIndices.x; i++)
-                        performCorrection = performCorrection || ActivateRow(i, true);
+                        performCorrection = performCorrection || ActivateList(i, true);
                 }
                 if (diff.y > 0)
                 {
                     for (int i = (int)ActiveIndices.y + 1; i <= newActiveIndices.y; i++)
-                        performCorrection = performCorrection || ActivateRow(i, true);
+                        performCorrection = performCorrection || ActivateList(i, true);
                 }
 
             }
@@ -340,7 +339,7 @@ namespace pooledList
             for (int i = 0; i < Empties.Count; i++)
             {
                 //I need to know if it was necessary.
-                bool correct = ActivateRow(i, RowIsActive(i));
+                bool correct = ActivateList(i, ListIsActive(i));
                 if (!correct)
                     incorrect++;
             }
@@ -348,21 +347,21 @@ namespace pooledList
             Debug.LogError("Correction was necessary for " + incorrect + " rows");
         }
 
-        private bool RowIsActive(int row)
+        private bool ListIsActive(int index)
         {
-            return row >= ActiveIndices.x && row <= ActiveIndices.y;
+            return index >= ActiveIndices.x && index <= ActiveIndices.y;
         }
 
         /// <summary>
-        /// 
+        /// Activate or deactivate a list of empties
         /// </summary>
-        /// <param name="row"></param>
+        /// <param name="index">column or row index</param>
         /// <param name="activate"></param>
         /// <returns>Whether to preform a full update upon a failure</returns>
-        private bool ActivateRow(int row, bool activate)
+        private bool ActivateList(int index, bool activate)
         {
-            List<PoolEmptyObject> rowToAdjust = Empties[row];
-            foreach (var item in rowToAdjust)
+            List<PoolEmptyObject> listToAdjust = Empties[index];
+            foreach (var item in listToAdjust)
             {
                 if (activate)
                 {
@@ -392,30 +391,82 @@ namespace pooledList
         {
             if (VisibleRect == null) return Vector2.zero;
 
-            float fullScrollbarValue = height - viewableArea.y; 
+            float pos = Mathf.Lerp(FullScrollbarValue, 0f, scrollbarValue); //Lerp from the top to the bottom of scrollbar to determine position
+
+            float viewableSecondaryAxis = constraint == GridLayoutGroup.Constraint.FixedRowCount ? viewableArea.x : viewableArea.y;
+            float lowestPosVisible = pos;
+            float highestPosVisible = pos + viewableSecondaryAxis;
+
+            int min = Mathf.Max(ViewableIndexAtPos(lowestPosVisible) - Buffer, 0);
+            int max = Mathf.Min(ViewableIndexAtPos(highestPosVisible) + Buffer, secondaryAxisCount - 1);
+
+            return new Vector2(min, max);
+        }
+        /*
+        private Vector2 CalculateActiveIndices(float scrollbarValue)
+        {
+            if (VisibleRect == null) return Vector2.zero;
+
+            float fullScrollbarValue = height - viewableArea.y;
             float pos = Mathf.Lerp(fullScrollbarValue, 0f, scrollbarValue); //Lerp from the top to the bottom of scrollbar to determine position
 
             float lowestPosVisible = pos;
             float highestPosVisible = pos + viewableArea.y;
 
             int min = Mathf.Max(ViewableRowAtPos(lowestPosVisible) - Buffer, 0);
-            int max = Mathf.Min(ViewableRowAtPos(highestPosVisible) + Buffer, rows-1);
+            int max = Mathf.Min(ViewableRowAtPos(highestPosVisible) + Buffer, rows - 1);
+
+
+            return new Vector2(min, max);
+        }*/
+
+        private float FullScrollbarValue
+        {
+            get
+            {
+                return constraint == GridLayoutGroup.Constraint.FixedColumnCount 
+                    ? height - viewableArea.y 
+                    : width  - viewableArea.x;
+            }
+        }
+
+        private Vector2 CalculateActiveIndicesHorizontal(float scrollbarValue)
+        {
+            if (VisibleRect == null) return Vector2.zero;
+
+            float fullScrollbarValue = width - viewableArea.x;
+            float pos = Mathf.Lerp(fullScrollbarValue, 0f, scrollbarValue); //Lerp from the top to the bottom of scrollbar to determine position
+
+            float lowestPosVisible = pos;
+            float highestPosVisible = pos + viewableArea.x;
+
+            int min = Mathf.Max(ViewableColAtPos(lowestPosVisible) - Buffer, 0);
+            int max = Mathf.Min(ViewableColAtPos(highestPosVisible) + Buffer, columns - 1);
 
 
             return new Vector2(min, max);
         }
 
+        private int ViewableIndexAtPos(float pos)
+        {
+            return constraint == GridLayoutGroup.Constraint.FixedColumnCount
+                ? (int)(pos / (CellSize.y + Spacing.y))
+                : (int)(pos / (CellSize.x + Spacing.x));
+
+        }
         private int ViewableRowAtPos(float pos)
         {
             return (int)(pos / (CellSize.y + Spacing.y));
         }
+        private int ViewableColAtPos(float pos)
+        {
+            return (int)(pos / (CellSize.x + Spacing.x));
+        }
 
         public void AddData(IEnumerable<U> data)
         {
-            doNotUpdate = true;
             foreach (var item in data)
                 AddData(item);
-            doNotUpdate = false;
             Scrollbar.onValueChanged.Invoke(1);
         }
 
@@ -446,8 +497,8 @@ namespace pooledList
             empty.data = dataItem;
             empty.transform.SetParent(Grid.transform, false);
 
-            List<PoolEmptyObject> rowOfEmpties = GetRowForNextEmpty();
-            rowOfEmpties.Add(empty);
+            List<PoolEmptyObject> listForNextEmpty = GetListForNextEmpty();
+            listForNextEmpty.Add(empty);
 
             return empty;
         }
@@ -467,7 +518,8 @@ namespace pooledList
             }
             else if (PoolSize > 0)
             {
-                throw new Exception("Pool Limit Exceeded. PoolSize: " + PoolSize);
+                throw new PooledListException("Pool Limit Exceeded. PoolSize: " + PoolSize);
+                //TODO A more graceful error case. Increase pool size automatically?
             }
             retv.SetData((U) dataItem);
             InUse.Add(retv);
@@ -495,41 +547,6 @@ namespace pooledList
             InUse.Clear();
             Empties.Clear();
         }
-        /*
-        private int _maxActiveCells = -1;
-        private int MaxActiveCells
-        {
-            get
-            {
-                if (_maxActiveCells == -1)
-                {
-
-                    _maxActiveCells = MaxVisibleConstrainedAxis*MaxVisiblePrimaryAxis;
-                }
-                return _maxActiveCells;
-            }
-        }
-
-        //e.g. max visible rows
-        private int MaxVisiblePrimaryAxis
-        {
-            get
-            {
-                return (int) (VisibleRect.rect.height/CellSize.y + 2);
-            }
-        }
-
-        //e.g. max visible columns
-        private int MaxVisibleConstrainedAxis
-        {
-            get
-            {
-                return columns;
-            }
-        }
-
-        */
-        
     }
 
     internal class PooledListException : Exception
