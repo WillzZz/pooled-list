@@ -123,8 +123,6 @@ namespace pooledList
         //Track the first and last index of currently active tiles
         protected Vector2 ActiveIndices = Vector2.zero;
 
-        //TODO: Allow for horizontal expanding lists!
-
         protected virtual void Awake()
         {
             if (Grid == null)
@@ -211,7 +209,6 @@ namespace pooledList
 
         private void RecalculateSize()
         {
-            //TODO Need to adjust this for differing anchor setups
             ScrollRect.content.sizeDelta = new Vector2(width, height);
         }
 
@@ -357,7 +354,6 @@ namespace pooledList
             return false;
         }
 
-        //TODO: This assumes vertical scrolling only!
         private Vector2 CalculateActiveIndices(float scrollbarValue)
         {
             if (VisibleRect == null) return Vector2.zero;
