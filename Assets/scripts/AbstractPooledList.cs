@@ -489,6 +489,14 @@ namespace pooledList
             }
             InUse.Clear();
             Empties.Clear();
+            ActiveIndices = Vector2.zero;
+
+            Transform gridTransform = Grid.transform;
+            int childCount = gridTransform.childCount;
+            for (int i = childCount - 1; i >= 0; i--)
+            {
+                DestroyImmediate(gridTransform.GetChild(0).gameObject);
+            }
         }
     }
 
