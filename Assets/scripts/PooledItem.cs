@@ -20,20 +20,7 @@ namespace pooledList
             Debug.Log("Add");
         }
 
-        public bool visible 
-        {
-            get
-            {
-                return true;
-            }
-        }
-
         public object Key { get; private set; }
-
-        public void Activate(bool toActivate)
-        {
-            Image.color = toActivate ? ActiveColor : InactiveColor;
-        }
 
         public void SetData(PooledData data)
         {
