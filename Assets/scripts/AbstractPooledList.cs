@@ -142,9 +142,9 @@ namespace pooledList
             }
             else
             {
-                if (IsVertical)
+                if (IsVertical && ScrollRect.horizontalScrollbar != null)
                     ScrollRect.horizontalScrollbar.gameObject.SetActive(false);
-                else
+                else if (ScrollRect.verticalScrollbar != null)
                     ScrollRect.verticalScrollbar.gameObject.SetActive(false);
             }
 
